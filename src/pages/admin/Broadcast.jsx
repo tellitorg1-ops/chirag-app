@@ -55,6 +55,16 @@ function BroadcastContent() {
 
     const { data: { user } } = await supabase.auth.getUser()
 
+    // Fetch sender profile for name + tick
+    const { data: senderProfile } = await supabase
+      .from('profiles')
+      .select('name, verified_tick, verified_name, role')
+      .eq('id', user.id)
+      .single()
+
+    const senderName = senderProfile?.verified_name || senderProfile?.name || 'LeaderIQ Team'
+    const senderTick = senderProfile?.verified_tick || null
+
     // Insert broadcast record
     const { error: broadcastError } = await supabase
       .from('broadcasts')
@@ -67,6 +77,8 @@ function BroadcastContent() {
         points:       0,
         platform:     '',
         created_by:   user.id,
+        sender_name:  senderName,
+        sender_tick:  senderTick,
       })
 
     if (broadcastError) {
@@ -87,6 +99,8 @@ function BroadcastContent() {
         title,
         body,
         type,
+        sender_name: senderName,
+        sender_tick: senderTick,
       }))
       const { error: notifError } = await supabase.from('notifications').insert(notifs)
       if (notifError) console.error('Notifications insert error:', notifError)

@@ -33,11 +33,11 @@ export default function Login() {
 
       {/* ── Navy top ── */}
       <div style={s.top}>
-        <div style={s.badge}>VOLUNTEERX</div>
+        <div style={s.badge}>LEADERIQ</div>
         <h1 style={s.heading}>
-          VOLUNTEER<span style={{ color: '#3B82F6' }}>X</span>
+          LEADER<span style={{ color: '#3B82F6' }}>IQ</span>
         </h1>
-        <p style={s.subtitle}>Digital Volunteer Management Platform</p>
+        <p style={s.subtitle}>India's First AI-Powered Leadership &amp; Volunteer Intelligence Platform</p>
       </div>
 
       {/* ── White card ── */}
@@ -65,7 +65,7 @@ export default function Login() {
           <FeatureCard emoji="🎁" label="Win Prizes" />
         </div>
 
-        <p style={s.footer}>Developed by Vjenix Futuristic Technologies</p>
+        <p style={s.footer}>A product by VJenix Futuristic Technologies</p>
       </div>
 
     </div>

@@ -89,7 +89,7 @@ export default function OtpVerify() {
       // Role check first
       if (profile?.role === 'super_admin' ||
           profile?.role === 'admin' ||
-          profile?.role === 'viewer') {
+          profile?.role === 'author') {
         navigate('/admin')
         return
       }

@@ -14,6 +14,7 @@ import ConnectAccounts from './pages/ConnectAccounts'
 import Analytics      from './pages/Analytics'
 import Notifications  from './pages/Notifications'
 
+import AdminGuard      from './pages/admin/AdminGuard'
 import WarRoom         from './pages/admin/WarRoom'
 import Volunteers      from './pages/admin/Volunteers'
 import Approvals       from './pages/admin/Approvals'
@@ -62,7 +63,7 @@ export default function App() {
           <Route path="/admin/approvals"      element={<Approvals />} />
           <Route path="/admin/broadcast"      element={<Broadcast />} />
           <Route path="/admin/analytics"      element={<AdminAnalytics />} />
-          <Route path="/admin/super"          element={<SuperAdmin />} />
+          <Route path="/admin/super"          element={<AdminGuard requireSuperAdmin={true}><SuperAdmin /></AdminGuard>} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

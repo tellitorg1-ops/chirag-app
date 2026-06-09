@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import TickBadge from '../components/TickBadge'
 
 /* ── Helpers ── */
 
@@ -171,6 +172,13 @@ export default function Notifications() {
                 <div style={{ flex: 1, overflow: 'hidden' }}>
                   <p style={s.notifTitle}>{notif.title || 'Notification'}</p>
                   <p style={s.notifBody}>{notif.body || notif.message || ''}</p>
+                  {notif.sender_name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94A3B8', marginBottom: 2 }}>
+                      <span>From:</span>
+                      <span style={{ fontWeight: 600 }}>{notif.sender_name}</span>
+                      {notif.sender_tick && <TickBadge type={notif.sender_tick} size={12} />}
+                    </div>
+                  )}
                   <p style={s.notifTime}>{timeAgo(notif.created_at)}</p>
                 </div>
                 {unread && <div style={s.unreadDot} />}

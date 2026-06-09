@@ -3,13 +3,20 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import TickBadge from '../../components/TickBadge'
 
-const NAV_ITEMS = [
-  { path: '/admin',             icon: 'ti-home',        label: 'War Room',   exact: true },
-  { path: '/admin/volunteers',  icon: 'ti-users',       label: 'Volunteers' },
-  { path: '/admin/approvals',   icon: 'ti-check',       label: 'Approvals' },
-  { path: '/admin/broadcast',   icon: 'ti-speakerphone',label: 'Broadcast' },
-  { path: '/admin/analytics',   icon: 'ti-chart-bar',   label: 'Analytics' },
+const ALL_NAV = [
+  { path: '/admin',            icon: 'ti-home',        label: 'War Room',   exact: true, roles: ['admin', 'super_admin', 'author'] },
+  { path: '/admin/volunteers', icon: 'ti-users',       label: 'Volunteers',              roles: ['admin', 'super_admin'] },
+  { path: '/admin/approvals',  icon: 'ti-check',       label: 'Approvals',               roles: ['admin', 'super_admin'] },
+  { path: '/admin/broadcast',  icon: 'ti-speakerphone',label: 'Broadcast',               roles: ['admin', 'super_admin', 'author'] },
+  { path: '/admin/analytics',  icon: 'ti-chart-bar',   label: 'Analytics',               roles: ['admin', 'super_admin', 'author'] },
+  { path: '/admin/super',      icon: 'ti-shield',      label: 'Super Admin', superOnly: true, roles: ['super_admin'] },
 ]
+
+const ROLE_DISPLAY = {
+  super_admin: { label: '⭐ Super Admin', color: '#A78BFA', avatarBg: 'rgba(139,92,246,0.3)' },
+  admin:       { label: 'Admin',          color: '#60A5FA', avatarBg: 'rgba(29,111,237,0.3)' },
+  author:      { label: '✍ Author',       color: '#FCD34D', avatarBg: 'rgba(245,158,11,0.3)' },
+}
 
 export default function AdminLayout({ children }) {
   const [adminProfile, setAdminProfile] = useState(null)
@@ -30,12 +37,10 @@ export default function AdminLayout({ children }) {
     navigate('/')
   }
 
-  const navItems = [
-    ...NAV_ITEMS,
-    ...(adminProfile?.role === 'super_admin'
-      ? [{ path: '/admin/super', icon: 'ti-shield', label: 'Super Admin', superOnly: true }]
-      : []),
-  ]
+  const role = adminProfile?.role
+  const navItems = ALL_NAV.filter(item => item.roles.includes(role))
+
+  const roleDisplay = ROLE_DISPLAY[role] || ROLE_DISPLAY.admin
 
   const isActive = (path, exact) =>
     exact ? location.pathname === path : location.pathname.startsWith(path)
@@ -44,18 +49,14 @@ export default function AdminLayout({ children }) {
     <div style={s.sidebar}>
       {/* Logo */}
       <div style={s.sidebarLogo}>
-        <div style={s.logoText}>VolunteerX</div>
+        <div style={s.logoText}>LeaderIQ</div>
         <div style={s.logoSub}>Admin Dashboard</div>
       </div>
 
       {/* Admin Profile */}
       {adminProfile && (
         <div style={s.adminInfo}>
-          <div style={{
-            ...s.adminAvatar,
-            background: adminProfile.role === 'super_admin'
-              ? 'rgba(139,92,246,0.3)' : 'rgba(29,111,237,0.3)',
-          }}>
+          <div style={{ ...s.adminAvatar, background: roleDisplay.avatarBg }}>
             {(adminProfile.name || 'A').charAt(0).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -65,11 +66,8 @@ export default function AdminLayout({ children }) {
               </span>
               <TickBadge type={adminProfile.verified_tick} size={12} />
             </div>
-            <div style={{
-              ...s.adminRole,
-              color: adminProfile.role === 'super_admin' ? '#A78BFA' : '#60A5FA',
-            }}>
-              {adminProfile.role === 'super_admin' ? '⭐ Super Admin' : 'Admin'}
+            <div style={{ ...s.adminRole, color: roleDisplay.color }}>
+              {roleDisplay.label}
             </div>
           </div>
         </div>

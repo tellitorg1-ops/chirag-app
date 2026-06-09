@@ -25,7 +25,7 @@ export default function AdminGuard({ children, requireSuperAdmin = false }) {
         navigate('/admin')
       }
     } else {
-      if (['admin', 'super_admin'].includes(profile.role)) {
+      if (['admin', 'super_admin', 'author'].includes(profile.role)) {
         setAllowed(true)
       } else {
         navigate('/')

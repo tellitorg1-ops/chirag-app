@@ -1,195 +1,272 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import AdminGuard from './AdminGuard'
 import AdminLayout from './AdminLayout'
+import TickBadge from '../../components/TickBadge'
 
-function SuperAdminContent() {
-  const [admins,   setAdmins]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(null)
-  const [newAdmin, setNewAdmin] = useState({ mobile: '', name: '', role: 'admin' })
-  const [adding,   setAdding]   = useState(false)
-  const [msg,      setMsg]      = useState('')
-
-  useEffect(() => { fetchAdmins() }, [])
-
-  const fetchAdmins = async () => {
-    const { data } = await supabase.from('profiles').select('*')
-      .in('role', ['admin', 'super_admin']).order('created_at', { ascending: false })
-    setAdmins(data || [])
-    setLoading(false)
-  }
-
-  const updateRole = async (id, role) => {
-    setSaving(id)
-    await supabase.from('profiles').update({ role }).eq('id', id)
-    await fetchAdmins()
-    setSaving(null)
-  }
-
-  const updateTick = async (id, tick) => {
-    setSaving(id + '_tick')
-    await supabase.from('profiles').update({ verified_tick: tick }).eq('id', id)
-    await fetchAdmins()
-    setSaving(null)
-  }
-
-  const promoteByMobile = async () => {
-    if (!newAdmin.mobile.trim()) return
-    setAdding(true)
-    const phone = '+91' + newAdmin.mobile.replace(/\D/g, '')
-    const { data, error } = await supabase.from('profiles').update({ role: newAdmin.role })
-      .eq('mobile', phone).select()
-
-    if (error || !data?.length) {
-      setMsg('❌ Volunteer not found with this mobile number')
-    } else {
-      setMsg(`✅ ${data[0].name || phone} promoted to ${newAdmin.role}`)
-      setNewAdmin({ mobile: '', name: '', role: 'admin' })
-      await fetchAdmins()
-    }
-    setAdding(false)
-    setTimeout(() => setMsg(''), 4000)
-  }
-
-  if (loading) return <Loader />
-
-  return (
-    <div className="admin-page">
-      <div style={s.pageHeader}>
-        <div>
-          <h1 style={s.pageTitle}>⭐ Super Admin Panel</h1>
-          <p style={s.pageSub}>Manage admin roles, verified ticks, and system settings</p>
-        </div>
-        <div style={s.superBadge}>Super Admin Only</div>
-      </div>
-
-      {/* Promote to admin */}
-      <div style={s.card}>
-        <h2 style={s.cardTitle}>Promote Volunteer to Admin</h2>
-        <div style={s.promoteRow}>
-          <input
-            style={s.input}
-            placeholder="Mobile number (10 digits)"
-            value={newAdmin.mobile}
-            onChange={e => setNewAdmin(p => ({ ...p, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-            maxLength={10}
-          />
-          <select
-            style={s.select}
-            value={newAdmin.role}
-            onChange={e => setNewAdmin(p => ({ ...p, role: e.target.value }))}
-          >
-            <option value="admin">Admin</option>
-            <option value="super_admin">Super Admin</option>
-          </select>
-          <button
-            onClick={promoteByMobile}
-            disabled={adding || newAdmin.mobile.length < 10}
-            style={{ ...s.btn, opacity: (adding || newAdmin.mobile.length < 10) ? 0.5 : 1 }}
-          >
-            {adding ? 'Promoting...' : 'Promote →'}
-          </button>
-        </div>
-        {msg && <p style={{ fontSize: 13, marginTop: 10, color: msg.startsWith('✅') ? '#16A34A' : '#DC2626' }}>{msg}</p>}
-      </div>
-
-      {/* Admin list */}
-      <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', margin: '24px 0 14px' }}>
-        Admin Roster ({admins.length})
-      </h2>
-      <div style={s.tableCard}>
-        {admins.map((a, i) => (
-          <div key={a.id} style={{ ...s.tableRow, borderBottom: i < admins.length - 1 ? '1px solid #F1F5F9' : 'none' }}>
-            <div style={{ ...s.avatar, background: a.role === 'super_admin' ? 'rgba(139,92,246,0.15)' : '#EFF6FF', color: a.role === 'super_admin' ? '#9333EA' : '#1D6FED' }}>
-              {(a.name || '?').charAt(0).toUpperCase()}
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={s.name}>{a.name || 'Unnamed'}</p>
-              <p style={s.sub}>{a.mobile} · {a.district || '—'}</p>
-            </div>
-
-            {/* Role select */}
-            <select
-              value={a.role}
-              onChange={e => updateRole(a.id, e.target.value)}
-              disabled={saving === a.id}
-              style={{ ...s.roleSelect, color: a.role === 'super_admin' ? '#9333EA' : '#1D6FED' }}
-            >
-              <option value="volunteer">Volunteer</option>
-              <option value="admin">Admin</option>
-              <option value="super_admin">Super Admin</option>
-            </select>
-
-            {/* Verified tick */}
-            <select
-              value={a.verified_tick || ''}
-              onChange={e => updateTick(a.id, e.target.value || null)}
-              disabled={saving === a.id + '_tick'}
-              style={s.tickSelect}
-            >
-              <option value="">No tick</option>
-              <option value="blue">Blue tick</option>
-              <option value="green">Green tick</option>
-            </select>
-
-            <div style={{ fontSize: 11, color: '#94A3B8', minWidth: 60, textAlign: 'right' }}>
-              {saving === a.id || saving === a.id + '_tick' ? 'Saving...' : ''}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Danger zone */}
-      <div style={s.dangerCard}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: '#DC2626' }} />
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#DC2626', margin: 0 }}>Danger Zone</h3>
-        </div>
-        <p style={{ fontSize: 12, color: '#94A3B8', marginBottom: 12 }}>These actions are irreversible. Proceed with caution.</p>
-        <button style={s.dangerBtn} onClick={() => alert('Contact system administrator for this action.')}>
-          Reset All Rankings
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function Loader() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-      <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid #E2E8F0', borderTop: '3px solid #0A2540', animation: 'spin 1s linear infinite' }} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  )
+const roleColors = {
+  super_admin: { bg: '#F5F3FF', color: '#6D28D9', label: '⭐ Super Admin' },
+  admin:       { bg: '#EFF6FF', color: '#1D6FED', label: 'Admin' },
+  author:      { bg: '#FFFBEB', color: '#D97706', label: '✍ Author' },
 }
 
 export default function SuperAdmin() {
-  return (
-    <AdminGuard requireSuperAdmin>
-      <AdminLayout><SuperAdminContent /></AdminLayout>
-    </AdminGuard>
-  )
-}
+  const [searchMobile, setSearchMobile] = useState('')
+  const [foundUser,    setFoundUser]    = useState(undefined)
+  const [admins,       setAdmins]       = useState([])
+  const [auditLogs,    setAuditLogs]    = useState([])
+  const [loading,      setLoading]      = useState(false)
+  const [currentUser,  setCurrentUser]  = useState(null)
+  const [activeTab,    setActiveTab]    = useState('roles')
 
-const s = {
-  pageHeader:  { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  pageTitle:   { fontSize: 22, fontWeight: 800, color: '#0F172A', margin: '0 0 4px' },
-  pageSub:     { fontSize: 13, color: '#94A3B8' },
-  superBadge:  { background: 'rgba(139,92,246,0.1)', color: '#9333EA', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 10, padding: '6px 14px', fontSize: 12, fontWeight: 700 },
-  card:        { background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 16, padding: 20, marginBottom: 20 },
-  cardTitle:   { fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 14 },
-  promoteRow:  { display: 'flex', gap: 10 },
-  input:       { flex: 1, border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', fontSize: 14, fontFamily: 'Inter,sans-serif', color: '#0F172A', outline: 'none' },
-  select:      { border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontFamily: 'Inter,sans-serif', color: '#0F172A', outline: 'none' },
-  btn:         { background: '#0A2540', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' },
-  tableCard:   { background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 14, overflow: 'hidden', marginBottom: 20 },
-  tableRow:    { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' },
-  avatar:      { width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, flexShrink: 0 },
-  name:        { fontSize: 13, fontWeight: 600, color: '#0F172A', marginBottom: 2 },
-  sub:         { fontSize: 11, color: '#94A3B8' },
-  roleSelect:  { fontSize: 12, fontWeight: 700, border: '1.5px solid #E2E8F0', borderRadius: 8, padding: '4px 8px', fontFamily: 'Inter,sans-serif', outline: 'none', cursor: 'pointer' },
-  tickSelect:  { fontSize: 12, color: '#64748B', border: '1.5px solid #E2E8F0', borderRadius: 8, padding: '4px 8px', fontFamily: 'Inter,sans-serif', outline: 'none', cursor: 'pointer' },
-  dangerCard:  { background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: 14, padding: 16 },
-  dangerBtn:   { background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' },
+  useEffect(() => { fetchData() }, [])
+
+  const fetchData = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    setCurrentUser(user)
+
+    const [adminsRes, logsRes] = await Promise.all([
+      supabase.from('profiles').select('*').in('role', ['admin', 'author', 'super_admin']).order('role'),
+      supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(50),
+    ])
+    setAdmins(adminsRes.data || [])
+    setAuditLogs(logsRes.data || [])
+  }
+
+  const findUser = async () => {
+    if (!searchMobile.trim()) return
+    setLoading(true)
+    const mobile = searchMobile.replace(/\D/g, '')
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .or(`mobile.eq.${mobile},mobile.eq.91${mobile},mobile.eq.+91${mobile}`)
+      .maybeSingle()
+    setFoundUser(data)
+    setLoading(false)
+  }
+
+  const changeRole = async (volId, volName, newRole) => {
+    const tick =
+      newRole === 'admin' || newRole === 'super_admin' ? 'blue'
+      : newRole === 'author' ? 'gold'
+      : null
+
+    await supabase.from('profiles').update({ role: newRole, verified_tick: tick }).eq('id', volId)
+
+    await supabase.from('audit_logs').insert({
+      performed_by: currentUser.id,
+      action: 'ROLE_CHANGE',
+      target_id: volId,
+      details: { name: volName, new_role: newRole },
+    })
+
+    await supabase.from('notifications').insert({
+      volunteer_id: volId,
+      title: 'Role Updated',
+      body: `Your role is now: ${newRole}`,
+      type: 'notification',
+    })
+
+    alert(`${volName} is now ${newRole}!`)
+    setFoundUser(prev => ({ ...prev, role: newRole, verified_tick: tick }))
+    await fetchData()
+  }
+
+  const removeRole = async (volId, volName) => {
+    if (!window.confirm(`Remove ${volName}'s special role?`)) return
+
+    await supabase.from('profiles').update({ role: 'volunteer', verified_tick: null }).eq('id', volId)
+
+    await supabase.from('audit_logs').insert({
+      performed_by: currentUser.id,
+      action: 'ROLE_REMOVED',
+      target_id: volId,
+      details: { name: volName },
+    })
+
+    await fetchData()
+  }
+
+  return (
+    <AdminLayout>
+      <div style={{ padding: 20, maxWidth: 800 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 900, color: '#0F172A', margin: '0 0 4px', letterSpacing: '-0.5px' }}>
+          Super Admin Panel
+        </h1>
+        <p style={{ fontSize: 13, color: '#94A3B8', margin: '0 0 20px' }}>
+          Manage roles and permissions
+        </p>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', background: '#F8FAFC', borderRadius: 12, padding: 4, marginBottom: 20, width: 'fit-content', gap: 4 }}>
+          {[
+            { id: 'roles', label: 'Role Manager' },
+            { id: 'team',  label: 'Current Team' },
+            { id: 'logs',  label: 'Audit Log' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '8px 16px', borderRadius: 9, border: 'none',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'Inter,sans-serif',
+                background: activeTab === tab.id ? '#fff' : 'transparent',
+                color:      activeTab === tab.id ? '#0F172A' : '#94A3B8',
+                boxShadow:  activeTab === tab.id ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ROLE MANAGER TAB */}
+        {activeTab === 'roles' && (
+          <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 16, padding: 20 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>
+              Find Volunteer by Mobile
+            </h2>
+            <p style={{ fontSize: 12, color: '#94A3B8', marginBottom: 14 }}>
+              Enter mobile number to assign role
+            </p>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={searchMobile}
+                onChange={e => setSearchMobile(e.target.value)}
+                placeholder="9876543210"
+                onKeyDown={e => e.key === 'Enter' && findUser()}
+                style={{ flex: 1, padding: '10px 14px', border: '1.5px solid #E2E8F0', borderRadius: 12, fontSize: 14, fontFamily: 'Inter,sans-serif', outline: 'none' }}
+              />
+              <button
+                onClick={findUser}
+                style={{ padding: '10px 20px', background: '#0A2540', color: '#fff', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+              >
+                {loading ? 'Searching...' : 'Find'}
+              </button>
+            </div>
+
+            {/* Found user card */}
+            {foundUser && (
+              <div style={{ marginTop: 16, background: '#F8FAFC', borderRadius: 12, padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#0A2540', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#fff' }}>
+                    {(foundUser.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 700, color: '#0F172A' }}>
+                      {foundUser.name || 'No name'}
+                      <TickBadge type={foundUser.verified_tick} size={14} />
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                      {foundUser.mobile}
+                      {' • '}
+                      <span style={{ fontWeight: 600, color: roleColors[foundUser.role]?.color || '#64748B' }}>
+                        {foundUser.role}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: 12, color: '#64748B', marginBottom: 10, fontWeight: 600 }}>Assign Role:</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => changeRole(foundUser.id, foundUser.name, 'admin')}
+                    style={{ padding: '8px 16px', background: '#EFF6FF', color: '#1D6FED', border: '1.5px solid #BFDBFE', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+                  >
+                    🔵 Make Admin
+                  </button>
+                  <button
+                    onClick={() => changeRole(foundUser.id, foundUser.name, 'author')}
+                    style={{ padding: '8px 16px', background: '#FFFBEB', color: '#D97706', border: '1.5px solid #FDE68A', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+                  >
+                    🟡 Make Author
+                  </button>
+                  <button
+                    onClick={() => changeRole(foundUser.id, foundUser.name, 'volunteer')}
+                    style={{ padding: '8px 16px', background: '#F8FAFC', color: '#64748B', border: '1.5px solid #E2E8F0', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+                  >
+                    Remove Role
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {foundUser === null && searchMobile && !loading && (
+              <div style={{ marginTop: 12, fontSize: 13, color: '#DC2626', fontWeight: 500 }}>
+                No user found with this mobile number. Ask them to register first.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CURRENT TEAM TAB */}
+        {activeTab === 'team' && (
+          <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 16, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 13, fontWeight: 700, color: '#0F172A' }}>
+              All Admins &amp; Authors ({admins.length})
+            </div>
+            {admins.map((a) => {
+              const rc = roleColors[a.role]
+              return (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #F1F5F9' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: rc?.bg || '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: rc?.color || '#64748B', flexShrink: 0 }}>
+                    {(a.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
+                      {a.verified_name || a.name}
+                      <TickBadge type={a.verified_tick} size={13} />
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 1 }}>{a.mobile}</div>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: rc?.bg, color: rc?.color }}>
+                    {rc?.label || a.role}
+                  </span>
+                  {a.role !== 'super_admin' && (
+                    <button
+                      onClick={() => removeRole(a.id, a.name)}
+                      style={{ padding: '5px 10px', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* AUDIT LOG TAB */}
+        {activeTab === 'logs' && (
+          <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 16, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 13, fontWeight: 700, color: '#0F172A' }}>
+              Recent Actions
+            </div>
+            {auditLogs.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
+                No logs yet
+              </div>
+            ) : auditLogs.map(log => (
+              <div key={log.id} style={{ padding: '10px 16px', borderBottom: '1px solid #F1F5F9', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#EFF6FF', color: '#1D6FED', whiteSpace: 'nowrap', marginTop: 2 }}>
+                  {log.action}
+                </span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: '#0F172A', fontWeight: 500 }}>
+                    {log.details?.name || 'Unknown'}
+                    {log.details?.new_role && <span style={{ color: '#94A3B8' }}> → {log.details.new_role}</span>}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                    {new Date(log.created_at).toLocaleString('en-IN')}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </AdminLayout>
+  )
 }
