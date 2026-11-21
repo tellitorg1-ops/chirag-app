@@ -1,71 +1,40 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
-import { supabase } from './lib/supabase'
-
-import Login          from './pages/Login'
-import OtpVerify      from './pages/OtpVerify'
-import Register       from './pages/Register'
-import Home           from './pages/Home'
-import Leaderboard    from './pages/Leaderboard'
-import Profile        from './pages/Profile'
-import Tasks          from './pages/Tasks'
-import ConnectAccounts from './pages/ConnectAccounts'
-import Analytics      from './pages/Analytics'
-import Notifications  from './pages/Notifications'
-
-import AdminGuard      from './pages/admin/AdminGuard'
-import WarRoom         from './pages/admin/WarRoom'
-import Volunteers      from './pages/admin/Volunteers'
-import Approvals       from './pages/admin/Approvals'
-import Broadcast       from './pages/admin/Broadcast'
-import AdminAnalytics  from './pages/admin/AdminAnalytics'
-import SuperAdmin      from './pages/admin/SuperAdmin'
-
-const queryClient = new QueryClient()
-
-function ProtectedRoute({ children }) {
-  const [session, setSession] = useState(undefined)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  if (session === undefined) return null
-  if (!session) return <Navigate to="/" replace />
-  return children
-}
-
+import { SessionProvider, WorkspaceProvider } from './command/context'
+import { Entry, SignIn, Organizations } from './command/Onboarding'
+import { Shell } from './command/Shell'
+const Dashboard = lazy(() => import('./command/Dashboard').then(m => ({ default: m.Dashboard })))
+const Hazri = lazy(() => import('./command/Operations').then(m => ({ default: m.Hazri })))
+const Diary = lazy(() => import('./command/Operations').then(m => ({ default: m.Diary })))
+const Tasks = lazy(() => import('./command/Operations').then(m => ({ default: m.Tasks })))
+const Reviews = lazy(() => import('./command/Operations').then(m => ({ default: m.Reviews })))
+const Content = lazy(() => import('./pages/Content'))
+const Hierarchy = lazy(() => import('./command/Administration').then(m => ({ default: m.Hierarchy })))
+const Broadcast = lazy(() => import('./command/Administration').then(m => ({ default: m.Broadcast })))
+const Platform = lazy(() => import('./command/Administration').then(m => ({ default: m.Platform })))
+const Rankings = lazy(() => import('./command/Insights').then(m => ({ default: m.Rankings })))
+const Social = lazy(() => import('./command/Insights').then(m => ({ default: m.Social })))
+const Inbox = lazy(() => import('./command/Insights').then(m => ({ default: m.Inbox })))
+const Profile = lazy(() => import('./command/Insights').then(m => ({ default: m.Profile })))
+import './command/command.css'
+const client = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15000 } } })
 export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          {/* Public */}
-          <Route path="/"          element={<Login />} />
-          <Route path="/otp"       element={<OtpVerify />} />
-          <Route path="/register"  element={<Register />} />
-
-          {/* Volunteer app */}
-          <Route path="/home"          element={<ProtectedRoute><Home /></ProtectedRoute>} />
-          <Route path="/leaderboard"   element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
-          <Route path="/profile"       element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-          <Route path="/tasks"         element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
-          <Route path="/connect"       element={<ProtectedRoute><ConnectAccounts /></ProtectedRoute>} />
-          <Route path="/analytics"     element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-
-          {/* Admin — role guard is inside each page via AdminGuard */}
-          <Route path="/admin"                element={<WarRoom />} />
-          <Route path="/admin/volunteers"     element={<Volunteers />} />
-          <Route path="/admin/approvals"      element={<Approvals />} />
-          <Route path="/admin/broadcast"      element={<Broadcast />} />
-          <Route path="/admin/analytics"      element={<AdminAnalytics />} />
-          <Route path="/admin/super"          element={<AdminGuard requireSuperAdmin={true}><SuperAdmin /></AdminGuard>} />
-        </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
-  )
+  return <QueryClientProvider client={client}><BrowserRouter><SessionProvider><Suspense fallback={<div className="loading-screen">Opening workspace…</div>}><Routes>
+    <Route path="/" element={<Entry />} /><Route path="/login" element={<SignIn />} />
+    <Route path="/organizations" element={<Organizations />} /><Route path="/platform" element={<Platform />} />
+    <Route element={<WorkspaceProvider><Shell /></WorkspaceProvider>}>
+      <Route path="/home" element={<Dashboard />} /><Route path="/hazri" element={<Hazri />} />
+      <Route path="/diary" element={<Diary />} /><Route path="/tasks" element={<Tasks />} />
+      <Route path="/content" element={<Content />} /><Route path="/reviews" element={<Reviews />} />
+      <Route path="/hierarchy" element={<Hierarchy />} /><Route path="/leaderboard" element={<Rankings />} />
+      <Route path="/analytics" element={<Social />} /><Route path="/notifications" element={<Inbox />} />
+      <Route path="/broadcast" element={<Broadcast />} /><Route path="/profile" element={<Profile />} />
+    </Route>
+    <Route path="/connect" element={<Navigate to="/analytics" replace />} />
+    <Route path="/register" element={<Navigate to="/organizations" replace />} />
+    <Route path="/otp" element={<Navigate to="/login" replace />} />
+    <Route path="/admin/*" element={<Navigate to="/home" replace />} />
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes></Suspense></SessionProvider></BrowserRouter></QueryClientProvider>
 }

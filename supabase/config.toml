@@ -1,0 +1,9 @@
+project_id = "leader-iq"
+
+[functions.command-youtube]
+# JWT is verified explicitly with auth.getUser() inside the function.
+verify_jwt = false
+
+[functions.command-push]
+# Only the dedicated scheduler bearer secret is accepted.
+verify_jwt = false

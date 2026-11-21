@@ -25,3 +25,10 @@ dist-ssr
 
 .env
 node_modules
+.npm-cache/
+test-results/
+playwright-report/
+.local-artifacts/
+supabase/.temp/
+
+.vercel

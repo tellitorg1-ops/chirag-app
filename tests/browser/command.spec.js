@@ -1,0 +1,93 @@
+import { test, expect } from '@playwright/test'
+import { loadEnv } from 'vite'
+const env=loadEnv('test',process.cwd(),'VITE_')
+const project=new URL(env.VITE_SUPABASE_URL).hostname.split('.')[0]
+const org='10000000-0000-4000-8000-000000000001'
+const user='20000000-0000-4000-8000-000000000001'
+const worker='20000000-0000-4000-8000-000000000002'
+async function mockWorkspace(page,stage=1){
+  const orgRecord={id:org,name:'Test Organization',mode:'political',active:true,reward_anchor:'2026-01-01',monthly_reward:'Monthly recognition',grand_reward:'4-Month Big Reward'}
+  const member={org_id:org,user_id:user,name:'Test Leader',stage,manager_id:null,can_manage:stage===1,active:true,district:'Patna',area:'North'}
+  const database={cmd_orgs:[orgRecord],cmd_members:[member,{org_id:org,user_id:worker,name:'Field Member',stage:5,manager_id:user,active:true,district:'Patna'}],cmd_platform_admins:[],cmd_teams:[],cmd_invites:[],cmd_audit:[],cmd_broadcasts:[],cmd_rewards:[],cmd_ledger:[],cmd_social:[],cmd_social_snapshots:[],cmd_notifications:[],cmd_hazri:[],cmd_proofs:[],cmd_tasks:[{id:'30000000-0000-4000-8000-000000000001',org_id:org,title:'Visit assigned area',instructions:'Record your field observations.',active:true,points:25,assigned_to:null,created_by:worker,created_at:new Date().toISOString()}],cmd_campaigns:[{id:'40000000-0000-4000-8000-000000000001',org_id:org,title:'Community outreach',body:'Coordinate daily ground work.',active:true,created_at:new Date().toISOString()}]}
+  const calls=[]
+  await page.route('**/*.supabase.co/**',async route=>{
+    const request=route.request(),url=new URL(request.url())
+    const headers={'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}
+    if(request.method()==='OPTIONS')return route.fulfill({status:200,headers,body:'{}'})
+    if(url.pathname.includes('/auth/v1/'))return route.fulfill({status:200,headers,body:JSON.stringify({id:user,phone:'919999999999',aud:'authenticated',role:'authenticated'})})
+    if(url.pathname.endsWith('/rpc/cmd_execute')){
+      const body=request.postDataJSON();calls.push(body)
+      let result={ok:true,id:crypto.randomUUID()}
+      if(body.action==='rankings')result={start:'2026-11-01',end:'2026-12-01',rows:[{user_id:user,name:member.name,district:'Patna',stage,rank:1,points:245,ground_points:200,social_points:45,grade:'Sparsh'}]}
+      if(body.action==='check_in')database.cmd_hazri.push({id:result.id,org_id:org,user_id:user,slot:body.payload.slot,checked_in:new Date().toISOString(),checked_out:null})
+      if(body.action==='check_out')database.cmd_hazri.forEach(s=>s.checked_out=new Date().toISOString())
+      if(body.action==='proof')database.cmd_proofs.push({...body.payload,id:result.id,org_id:org,user_id:user,status:'pending',submitted_at:new Date().toISOString()})
+      return route.fulfill({status:200,headers,body:JSON.stringify(result)})
+    }
+    const table=url.pathname.split('/').pop()
+    let rows=[...(database[table]||[])]
+    for(const [key,value]of url.searchParams)if(value.startsWith('eq.'))rows=rows.filter(r=>String(r[key])===value.slice(3))
+    return route.fulfill({status:200,headers,body:JSON.stringify(rows)})
+  })
+  await page.addInitScript(({user,org,project})=>{
+    const session={access_token:'test-jwt-token',refresh_token:'test-refresh-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,user:{id:user,aud:'authenticated',role:'authenticated',phone:'919999999999',app_metadata:{},user_metadata:{}}}
+    localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify(session));localStorage.setItem('command_org',org)
+  },{user,org,project})
+  return {calls,database}
+}
+test('entry mode choice leads to mobile login without Aadhaar',async({page})=>{
+  await page.goto('/')
+  await expect(page.getByRole('heading',{name:/Leadership meets/})).toBeVisible()
+  await page.getByRole('button',{name:/Business \/ Brand/}).click()
+  await expect(page).toHaveURL(/login/)
+  await expect(page.getByLabel('Mobile number')).toBeVisible()
+  await expect(page.getByText('No Aadhaar document or number')).toBeVisible()
+})
+test('role-aware dashboard is responsive and all active routes render',async({page},info)=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message))
+  await mockWorkspace(page)
+  await page.goto('/home')
+  await expect(page.getByRole('heading',{name:'Command overview'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Sparsh',exact:true})).toBeVisible()
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
+  if(info.project.name==='desktop')await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
+  else await expect(page.getByRole('navigation',{name:'Quick navigation'})).toBeVisible()
+  await page.screenshot({path:`test-results/${info.project.name}-dashboard.png`,fullPage:true})
+  for(const [path,title] of [['/content','Campaigns & content'],['/hierarchy','Every person. A clear role.'],['/leaderboard','Rankings & recognition'],['/analytics','Social accounts & analytics'],['/reviews','Verification desk'],['/broadcast','Broadcast to your team'],['/profile','My profile'],['/notifications','Notification center']]){
+    await page.goto(path);await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible()
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
+  }
+  expect(errors).toEqual([])
+})
+test('ground worker checks in and submits evidence without self-awarding points',async({page})=>{
+  const {calls}=await mockWorkspace(page,5)
+  await page.goto('/hazri');await page.getByRole('button',{name:'Check in',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Your shift is active.'})).toBeVisible()
+  await page.goto('/diary')
+  await page.getByLabel('What work did you do?').fill('Visited the assigned route and recorded observations.')
+  await page.getByLabel('Field note / evidence').fill('Met the field coordinator at the assigned location and completed the report.')
+  await page.getByRole('button',{name:'Submit for verification'}).click()
+  await expect(page.getByText('Proof submitted for verification.',{exact:false})).toBeVisible()
+  expect(calls.some(c=>c.action==='proof'&&c.org_id===org&&c.payload.hazri_id)).toBeTruthy()
+  expect(calls.some(c=>c.action==='review')).toBeFalsy()
+  await page.goto('/reviews')
+  await expect(page.getByRole('heading',{name:'Leadership access required'})).toBeVisible()
+})
+test('rank controls request distinct timeframes and show exact next-grade points',async({page})=>{
+  const {calls}=await mockWorkspace(page,5);await page.goto('/leaderboard')
+  await expect(page.getByText('5 points to Sankalp')).toBeVisible()
+  for(const label of ['Daily','Weekly','Monthly','4-Month'])await page.getByRole('button',{name:label,exact:true}).click()
+  await expect.poll(()=>new Set(calls.filter(c=>c.action==='rankings').map(c=>c.payload.period)).size).toBe(4)
+})
+test('leadership sees linked shift timings and ground pulse in team reporting',async({page})=>{
+  const {database}=await mockWorkspace(page)
+  const shift='50000000-0000-4000-8000-000000000001'
+  database.cmd_hazri.push({id:shift,org_id:org,user_id:worker,slot:'subah',checked_in:new Date().toISOString(),checked_out:null})
+  database.cmd_proofs.push({id:'60000000-0000-4000-8000-000000000001',org_id:org,user_id:worker,hazri_id:shift,kind:'diary',status:'pending',mood:'concern',work:'Recorded field situation',pulse:'Access road needs attention',submitted_at:new Date().toISOString()})
+  await page.goto('/hierarchy')
+  await expect(page.getByRole('heading',{name:'Team attendance & daily reporting'})).toBeVisible()
+  await expect(page.getByRole('cell',{name:'Subah · Morning'})).toBeVisible()
+  await page.locator('summary').filter({hasText:'Field Member'}).click()
+  await expect(page.getByText('Ground pulse: Access road needs attention')).toBeVisible()
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
+})
