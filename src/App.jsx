@@ -2,7 +2,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider, WorkspaceProvider } from './command/context'
-import { Entry, SignIn, Organizations } from './command/Onboarding'
+import { Entry, SignIn } from './command/Onboarding'
+const Organizations = lazy(() => import('./command/Account').then(m => ({default:m.JoinWorkspace})))
+const Platform = lazy(() => import('./command/Account').then(m => ({default:m.AdministrationCenter})))
 import { Shell } from './command/Shell'
 const Dashboard = lazy(() => import('./command/Dashboard').then(m => ({ default: m.Dashboard })))
 const Hazri = lazy(() => import('./command/Operations').then(m => ({ default: m.Hazri })))
@@ -12,7 +14,6 @@ const Reviews = lazy(() => import('./command/Operations').then(m => ({ default: 
 const Content = lazy(() => import('./pages/Content'))
 const Hierarchy = lazy(() => import('./command/Administration').then(m => ({ default: m.Hierarchy })))
 const Broadcast = lazy(() => import('./command/Administration').then(m => ({ default: m.Broadcast })))
-const Platform = lazy(() => import('./command/Administration').then(m => ({ default: m.Platform })))
 const Rankings = lazy(() => import('./command/Insights').then(m => ({ default: m.Rankings })))
 const Social = lazy(() => import('./command/Insights').then(m => ({ default: m.Social })))
 const Inbox = lazy(() => import('./command/Insights').then(m => ({ default: m.Inbox })))

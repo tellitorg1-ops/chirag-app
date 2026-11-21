@@ -16,7 +16,7 @@ async function cmd(user,action,org,payload={}) { return as(user,async()=> (await
 before(async()=>{
   db=new PGlite()
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
-    create schema auth; create table auth.users(id uuid primary key);
+    create schema auth; create table auth.users(id uuid primary key,phone text,phone_confirmed_at timestamptz);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth to anon,authenticated,service_role; grant execute on function auth.uid() to public;
     create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
@@ -27,6 +27,7 @@ before(async()=>{
   for(const file of readdirSync(migrationDir).filter(f=>f.endsWith('.sql')).sort()) await db.exec(readFileSync(new URL(file,migrationDir),'utf8'))
   for(const id of Object.values(ids))await sql('insert into auth.users(id) values($1)',[id])
   await sql('insert into public.cmd_platform_admins(user_id) values($1)',[ids.admin])
+  for(const [key,id] of Object.entries(ids)) await sql("insert into public.cmd_profiles(user_id,name,district,area,completed) values($1,$2,'Patna','North',true)",[id,key])
   orgA=await cmd('admin','create_org',null,{name:'Party A',mode:'political',admin_name:'Platform Admin',reward_anchor:'2026-01-01'})
   orgB=await cmd('admin','create_org',null,{name:'Business B',mode:'business',admin_name:'Platform Admin',reward_anchor:'2026-01-01'})
   for(const [key,stage,manager] of [['lead',1,null],['district',3,'lead'],['teamlead',4,'district'],['worker',5,'teamlead'],['peer',5,'lead']]){
@@ -46,14 +47,15 @@ test('RLS hides unrelated organizations and members',async()=>{
   await assert.rejects(cmd('worker','create_org',null,{name:'Escalation',mode:'business'}),/Platform admin/)
   await assert.rejects(as('worker',()=>sql('select public.cmd_runtime_settings()')),/permission denied/)
 })
-test('invitation mode isolation and ground-pool onboarding',async()=>{
-  invite=await cmd('admin','invite',orgA.id,{manager_id:ids.teamlead,max_uses:1})
-  await assert.rejects(cmd('newcomer','join',null,{code:invite.code,mode:'business',name:'New Member'}),/selected mode/)
-  await cmd('newcomer','join',null,{code:invite.code,mode:'political',name:'New Member'})
+test('direct join creates no self-assigned party or leadership role',async()=>{
+  await assert.rejects(cmd('newcomer','join',null,{name:'New Member',stage:1}),/Join directly/)
+  await cmd('newcomer','basic_profile',null,{name:'New Member',district:'Patna',area:'North',stage:1,can_manage:true})
+  assert.equal((await sql('select count(*)::int n from public.cmd_members where user_id=$1',[ids.newcomer]))[0].n,0)
+  await cmd('admin','assign_member',orgA.id,{user_id:ids.newcomer,stage:5,wing:'ground',manager_id:ids.teamlead})
   const m=(await sql('select * from public.cmd_members where org_id=$1 and user_id=$2',[orgA.id,ids.newcomer]))[0]
   assert.equal(m.stage,5);assert.equal(m.can_manage,false);assert.equal(m.manager_id,ids.teamlead)
-  await assert.rejects(cmd('outsider','join',null,{code:invite.code,mode:'political',name:'Blocked'}),/invalid, expired, or full/)
 })
+
 test('hierarchy moves enforce authority, stage order and tenant boundaries',async()=>{
   await assert.rejects(cmd('worker','move',orgA.id,{user_id:ids.worker,stage:1}),/admin required/)
   await assert.rejects(cmd('admin','move',orgA.id,{user_id:ids.worker,stage:4,manager_id:ids.outsider,reason:'Test invalid parent'}),/higher stage/)
@@ -163,4 +165,60 @@ test('private proof photos cannot cross tenant or reporting-scope boundaries',as
   assert.equal((await as('teamlead',()=>sql('select name from storage.objects'))).length,1)
   assert.equal((await as('outsider',()=>sql('select name from storage.objects'))).length,0)
   await assert.rejects(as('outsider',()=>sql("insert into storage.objects(bucket_id,name) values('command-proofs',$1)",[`${orgA.id}/${ids.outsider}/forged.jpg`])),/row-level security/)
+})
+
+test('Admin is outside hierarchy, creates parties, and cannot grant global roles',async()=>{
+  await cmd('admin','set_global_role',null,{user_id:ids.peer,role:'admin'})
+  const m=(await sql('select * from public.cmd_members where org_id=$1 and user_id=$2',[orgA.id,ids.peer]))[0]
+  assert.equal(m.stage,null); assert.equal(m.can_manage,true)
+  const account=await cmd('peer','account'); assert.equal(account.isAdmin,true);assert.equal(account.isPlatform,false)
+  const own=await cmd('peer','create_org',null,{name:'Admin Party',mode:'political'})
+  assert.ok(own.id)
+  await assert.rejects(cmd('peer','set_global_role',null,{user_id:ids.worker,role:'super_admin'}),/Super Admin required/)
+  await assert.rejects(cmd('worker','directory'),/Admin required/)
+  const directory=await cmd('peer','directory')
+  assert.ok(!directory.some(p=>p.user_id===ids.outsider))
+  await assert.rejects(cmd('peer','assign_member',orgB.id,{user_id:ids.worker,stage:5,wing:'social'}),/admin required/)
+  await assert.rejects(cmd('peer','assign_member',orgA.id,{user_id:ids.outsider,stage:5,wing:'social'}),/outside your organization/)
+  await assert.rejects(cmd('admin','move',orgA.id,{user_id:ids.peer,stage:1,reason:'Invalid admin placement'}),/outside the hierarchy/)
+  const rank=await cmd('worker','rankings',orgA.id,{period:'monthly'})
+  assert.ok(!rank.rows.some(r=>r.user_id===ids.peer||r.user_id===ids.admin))
+})
+
+test('Super Admin promotion, demotion, audit and last-admin protection',async()=>{
+  await assert.rejects(cmd('admin','set_global_role',null,{user_id:ids.admin,role:'member'}),/last Super Admin/)
+  await cmd('admin','set_global_role',null,{user_id:ids.worker,role:'super_admin'})
+  assert.equal((await cmd('worker','account')).isPlatform,true)
+  await cmd('worker','set_global_role',null,{user_id:ids.worker,role:'member'})
+  assert.equal((await cmd('worker','account')).isPlatform,false)
+  assert.equal((await sql('select stage from public.cmd_members where org_id=$1 and user_id=$2',[orgA.id,ids.worker]))[0].stage,5)
+  await assert.rejects(cmd('worker','set_global_role',null,{user_id:ids.worker,role:'super_admin'}),/Super Admin required/)
+  assert.ok((await sql("select count(*)::int n from public.cmd_audit where action='set_global_role'"))[0].n>=3)
+  await assert.rejects(as('worker',()=>sql("select command_private.execute_legacy('access',$1,$2)",[orgA.id,JSON.stringify({user_id:ids.worker,can_manage:true,active:true})])),/permission denied/)
+})
+
+test('profile completion is mandatory for members and cannot set privileges',async()=>{
+  await sql('update public.cmd_profiles set completed=false where user_id=$1',[ids.newcomer])
+  await assert.rejects(cmd('newcomer','check_in',orgA.id,{slot:'subah'}),/basic profile/)
+  await assert.rejects(cmd('admin','assign_member',orgA.id,{user_id:ids.newcomer,stage:5,wing:'social'}),/basic profile/)
+  await assert.rejects(cmd('newcomer','basic_profile',null,{name:'Person',district:'',area:'North'}),/required/)
+  await cmd('newcomer','basic_profile',null,{name:'Person',district:'Patna',area:'North',isPlatform:true})
+  assert.equal((await cmd('newcomer','account')).isPlatform,false)
+  await cmd('admin','assign_member',orgA.id,{user_id:ids.newcomer,stage:5,wing:'social',manager_id:ids.teamlead})
+  const m=(await sql('select * from public.cmd_members where org_id=$1 and user_id=$2',[orgA.id,ids.newcomer]))[0]
+  assert.equal(m.wing,'social');assert.equal(m.stage,5)
+  await assert.rejects(cmd('admin','assign_member',orgA.id,{user_id:ids.newcomer,stage:4,wing:'social',manager_id:ids.worker}),/higher stage/)
+})
+
+test('initial privileged phones require verification and are granted only once',async()=>{
+  const uid='00000000-0000-4000-8000-000000000099'
+  await sql("insert into auth.users(id,phone) values($1,'+919643693090')",[uid])
+  assert.equal((await cmd(uid,'account')).isPlatform,false)
+  await sql('update auth.users set phone_confirmed_at=now() where id=$1',[uid])
+  assert.equal((await cmd(uid,'account')).isPlatform,true)
+  await cmd('admin','set_global_role',null,{user_id:uid,role:'member'})
+  assert.equal((await cmd(uid,'account')).isPlatform,false)
+  const aid='00000000-0000-4000-8000-000000000098'
+  await sql("insert into auth.users(id,phone,phone_confirmed_at) values($1,'919315937048',now())",[aid])
+  const a=await cmd(aid,'account');assert.equal(a.isAdmin,true);assert.equal(a.isPlatform,false)
 })

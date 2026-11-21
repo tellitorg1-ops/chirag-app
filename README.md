@@ -14,7 +14,7 @@ npm run test:browser
 
 Copy `.env.example` to `.env` for a new installation. Use only the Supabase project URL, publishable/anon key, and **public** VAPID key in the frontend. Never expose service-role, VAPID private, YouTube or AI secrets as `VITE_*` values.
 
-Browser tests use Edge, mock Supabase responses and never send OTPs, submit live proofs, or message real members. SQL integration tests execute the migrations in PGlite (real PostgreSQL WASM) with Supabase auth/storage stubs. They cover tenant separation, reporting scopes, invitations, stage moves, forged/self approvals, duplicate awards, shift ownership, private proof storage, social-channel ownership, period boundaries and reward sealing.
+Browser tests use Edge, mock Supabase responses and never send OTPs, submit live proofs, or message real members. SQL integration tests execute the migrations in PGlite (real PostgreSQL WASM) with Supabase auth/storage stubs. They cover tenant separation, reporting scopes, direct joining, profile gates, administrative roles, stage moves, forged/self approvals, duplicate awards, shift ownership, private proof storage, social-channel ownership, period boundaries and reward sealing.
 
 ## Routes and modules
 
@@ -22,15 +22,15 @@ Browser tests use Edge, mock Supabase responses and never send OTPs, submit live
 | --- | --- |
 | `/` | Political Parties / Business or Brand choice |
 | `/login` | Indian mobile OTP login and verification |
-| `/organizations` | Existing memberships and invitation-based joining |
-| `/platform` | Platform administrator: organizations, access, reward settings, audit |
+| `/organizations` | Required basic profile, direct joining and assignment waiting screen |
+| `/platform` | Separate Admin / Super Admin dashboards: parties, pending members, assignments, global roles and audit |
 | `/home` | Role-specific command dashboard and personal progress |
 | `/hazri` | Morning, daytime, evening or active shift; server-recorded check-in/out |
 | `/diary` | Work, proof, linked shift, timestamps and ground pulse |
 | `/tasks` | Assignments, evidence submission, feedback and task lifecycle |
 | `/content` | Campaign directives, content assets and linked execution tasks |
 | `/reviews` | Independent leadership verification and point awards |
-| `/hierarchy` | People, teams, reporting lines, stage movement, invites and audit |
+| `/hierarchy` | People, teams, reporting lines, stage movement and audit |
 | `/leaderboard` | Daily, weekly, monthly and four-month rankings/rewards |
 | `/analytics` | Social links, ownership review and server YouTube synchronization |
 | `/notifications` | Mandatory in-app notification center |
@@ -41,11 +41,13 @@ Active frontend implementation is in `src/command/`; `src/pages/Content.jsx` is 
 
 ## Access model
 
-- Platform administrators are stored in `cmd_platform_admins`, not editable user metadata.
-- Each organization membership is `(org_id, user_id)`. A person may belong to multiple organizations with independent roles and records.
-- Stages: Main Leader → Subordinates → District Leadership → Team Leadership → Ground Karyakarta Teams. Business mode uses executive/regional/field labels for the same structure.
-- New invitations always join at stage 5. Authorized organization administrators can move a person or entire team, change reporting lines, and create invitations. Every move is audited.
-- Platform administrators grant/revoke organization administration and suspend/restore memberships or organizations. Self-removal of administrative access is prevented.
+- Super Admins are stored in cmd_platform_admins; Admins are stored in cmd_admins. User metadata cannot grant roles.
+- Eight dashboards: Super Admin, Admin, Main Leader, Subordinate Leader, District Leader, Team Leader, Ground Karyakarta and Social Media Karyakarta.
+- Admins sit outside the five-stage hierarchy (stage is null), skip basic profiles and do not enter competition rankings. Super Admin can promote any registered user, demote administrators, and assign Admins to parties. The last Super Admin cannot be removed.
+- Anyone can join after mobile OTP, with required name, district and area; photo is optional. No invitation is required. Party membership and leadership cannot be self-selected. Users wait for an authorized administrator to assign their party, stage, reporting leader and Ground/Social work type.
+- Initial privileged mobile numbers are stored server-side and matched only to verified auth phone records. These grants are consumed once, so a later demotion is not undone at login.
+- A person can have party-scoped memberships; administrators only manage their assigned parties. Admins can create parties. Super Admin has all-party access.
+- Assignment and role changes are audited. Active sessions refresh account assignments every 10 seconds; server permissions apply immediately on the next request.
 - Leadership reads its reporting subtree. Organization administrators can manage their entire organization. Ordinary members read their own operational records. Organization leaderboards intentionally expose a limited member summary within that organization.
 - Database RLS, composite foreign keys and transactional RPC validation enforce isolation independently of the UI. Client queries and query-cache keys include organization and authenticated user.
 - Client writes go through `cmd_execute`. The internal privileged dispatcher is in the non-exposed `command_private` schema, checks `auth.uid()` and authorizes every action. Clients cannot insert points, modify roles, approve their own proofs, edit audit logs or read push capability URLs/server configuration.

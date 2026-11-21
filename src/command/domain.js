@@ -1,4 +1,4 @@
-export const STAGES = ['Main Leader', 'Subordinates', 'District Leadership', 'Team Leadership', 'Ground Karyakarta Teams']
+export const STAGES = ['Main Leader', 'Subordinate Leader', 'District Leader', 'Team Leader', 'Karyakarta']
 export const BUSINESS_STAGES = ['Executive Command', 'Regional Leadership', 'District / Area Leadership', 'Team Leadership', 'Field & Digital Teams']
 export const GRADES = [{ name: 'Sparsh', min: 0 }, { name: 'Sankalp', min: 250 }, { name: 'Uday', min: 1000 }, { name: 'Ojas', min: 2500 }, { name: 'Tejas', min: 5000 }]
 export const SLOTS = { subah: 'Subah · Morning', daytime: 'Daytime · Afternoon', shaam: 'Shaam · Evening', active: 'Active shift' }

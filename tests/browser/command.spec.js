@@ -5,10 +5,11 @@ const project=new URL(env.VITE_SUPABASE_URL).hostname.split('.')[0]
 const org='10000000-0000-4000-8000-000000000001'
 const user='20000000-0000-4000-8000-000000000001'
 const worker='20000000-0000-4000-8000-000000000002'
-async function mockWorkspace(page,stage=1){
+async function mockWorkspace(page,stage=1,options={}){
   const orgRecord={id:org,name:'Test Organization',mode:'political',active:true,reward_anchor:'2026-01-01',monthly_reward:'Monthly recognition',grand_reward:'4-Month Big Reward'}
-  const member={org_id:org,user_id:user,name:'Test Leader',stage,manager_id:null,can_manage:stage===1,active:true,district:'Patna',area:'North'}
+  const member={org_id:org,user_id:user,name:'Test Leader',stage,wing:options.wing||'ground',manager_id:null,can_manage:!!options.admin,active:true,district:'Patna',area:'North'}
   const database={cmd_orgs:[orgRecord],cmd_members:[member,{org_id:org,user_id:worker,name:'Field Member',stage:5,manager_id:user,active:true,district:'Patna'}],cmd_platform_admins:[],cmd_teams:[],cmd_invites:[],cmd_audit:[],cmd_broadcasts:[],cmd_rewards:[],cmd_ledger:[],cmd_social:[],cmd_social_snapshots:[],cmd_notifications:[],cmd_hazri:[],cmd_proofs:[],cmd_tasks:[{id:'30000000-0000-4000-8000-000000000001',org_id:org,title:'Visit assigned area',instructions:'Record your field observations.',active:true,points:25,assigned_to:null,created_by:worker,created_at:new Date().toISOString()}],cmd_campaigns:[{id:'40000000-0000-4000-8000-000000000001',org_id:org,title:'Community outreach',body:'Coordinate daily ground work.',active:true,created_at:new Date().toISOString()}]}
+  if(options.pending)database.cmd_members=[]
   const calls=[]
   await page.route('**/*.supabase.co/**',async route=>{
     const request=route.request(),url=new URL(request.url())
@@ -18,6 +19,9 @@ async function mockWorkspace(page,stage=1){
     if(url.pathname.endsWith('/rpc/cmd_execute')){
       const body=request.postDataJSON();calls.push(body)
       let result={ok:true,id:crypto.randomUUID()}
+      if(body.action==='account')result={isPlatform:!!options.superAdmin,isAdmin:!!options.admin||!!options.superAdmin,profile:{name:'Test Leader',district:'Patna',area:'North',completed:options.completed!==false}}
+      if(body.action==='directory')result=options.directory||[]
+      if(body.action==='basic_profile')options.completed=true
       if(body.action==='rankings')result={start:'2026-11-01',end:'2026-12-01',rows:[{user_id:user,name:member.name,district:'Patna',stage,rank:1,points:245,ground_points:200,social_points:45,grade:'Sparsh'}]}
       if(body.action==='check_in')database.cmd_hazri.push({id:result.id,org_id:org,user_id:user,slot:body.payload.slot,checked_in:new Date().toISOString(),checked_out:null})
       if(body.action==='check_out')database.cmd_hazri.forEach(s=>s.checked_out=new Date().toISOString())
@@ -43,11 +47,65 @@ test('entry mode choice leads to mobile login without Aadhaar',async({page})=>{
   await expect(page.getByLabel('Mobile number')).toBeVisible()
   await expect(page.getByText('No Aadhaar document or number')).toBeVisible()
 })
+
+for (const [label, stage, options] of [
+  ['Super Admin',null,{superAdmin:true,completed:false}],
+  ['Admin',null,{admin:true,completed:false}],
+  ['Main Leader',1,{}], ['Subordinate Leader',2,{}], ['District Leader',3,{}], ['Team Leader',4,{}],
+  ['Ground Karyakarta',5,{wing:'ground'}], ['Social Media Karyakarta',5,{wing:'social'}],
+]) test(`${label} receives its own dashboard`,async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message))
+  await mockWorkspace(page,stage,options)
+  await page.goto(options.admin||options.superAdmin ? '/organizations' : '/home')
+  await expect(page.getByRole('heading',{name:`${label} dashboard`,exact:true})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Basic profile',exact:true})).toHaveCount(0)
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
+  if(label==='Social Media Karyakarta') await expect(page.getByRole('link',{name:'Campaign content',exact:true})).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('direct signup requires profile, waits for assignment, then automatically opens assigned dashboard',async({page})=>{
+  const {database,calls}=await mockWorkspace(page,5,{pending:true,completed:false})
+  await page.goto('/organizations')
+  await expect(page.getByRole('heading',{name:'Basic profile',exact:true})).toBeVisible()
+  await expect(page.getByLabel('Invitation code')).toHaveCount(0)
+  await page.getByLabel('Full name').fill('New Karyakarta')
+  await page.getByLabel('District / region').fill('Patna')
+  await page.getByLabel('Block / area').fill('North')
+  await page.getByRole('button',{name:'Save profile & continue'}).click()
+  await expect(page.getByRole('heading',{name:'Party/team assignment pending'})).toBeVisible()
+  expect(calls.some(c=>c.action==='basic_profile')).toBeTruthy()
+  database.cmd_members.push({org_id:org,user_id:user,name:'New Karyakarta',stage:5,wing:'social',active:true})
+  await page.getByRole('button',{name:'Check assignment'}).click()
+  await expect(page.getByRole('heading',{name:'Social Media Karyakarta dashboard'})).toBeVisible()
+})
+
+test('a reassigned member sees their new dashboard without another login',async({page})=>{
+  const {database}=await mockWorkspace(page,5,{wing:'ground'})
+  await page.goto('/home')
+  await expect(page.getByRole('heading',{name:'Ground Karyakarta dashboard'})).toBeVisible()
+  database.cmd_members[0].stage=4
+  await expect(page.getByRole('heading',{name:'Team Leader dashboard'})).toBeVisible({timeout:15000})
+})
+
+test('Super Admin assigns a joined member and promotes an account from the dashboard',async({page})=>{
+  const {calls}=await mockWorkspace(page,null,{superAdmin:true,directory:[{user_id:worker,name:'Joined Person',phone:'919888888888',role:'member',completed:true,memberships:[]}]})
+  await page.goto('/platform')
+  await page.getByRole('button',{name:'Manage',exact:true}).click()
+  await page.getByRole('combobox',{name:'Party',exact:true}).selectOption(org)
+  await page.getByRole('combobox',{name:'Hierarchy level',exact:true}).selectOption('5')
+  await page.getByRole('combobox',{name:'Work type',exact:true}).selectOption('social')
+  await page.getByRole('button',{name:'Save party & dashboard assignment'}).click()
+  await expect.poll(()=>calls.some(c=>c.action==='assign_member'&&c.org_id===org&&c.payload.user_id===worker&&c.payload.wing==='social')).toBeTruthy()
+  await page.getByRole('combobox',{name:'Account role',exact:true}).selectOption('super_admin')
+  await page.getByRole('button',{name:'Update account role'}).click()
+  await expect.poll(()=>calls.some(c=>c.action==='set_global_role'&&c.payload.user_id===worker&&c.payload.role==='super_admin')).toBeTruthy()
+})
 test('role-aware dashboard is responsive and all active routes render',async({page},info)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message))
   await mockWorkspace(page)
   await page.goto('/home')
-  await expect(page.getByRole('heading',{name:'Command overview'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Main Leader dashboard'})).toBeVisible()
   await expect(page.getByRole('heading',{name:'Sparsh',exact:true})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
   if(info.project.name==='desktop')await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
