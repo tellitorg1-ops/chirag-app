@@ -101,6 +101,7 @@ test('diary points are capped per verified day and rejected work can be resubmit
   assert.ok(retry.id)
 })
 test('social sync baseline, ownership, idempotency and separated ground ledger',async()=>{
+  await sql("update public.cmd_members set wing='social' where user_id=$1",[ids.worker])
   await cmd('worker','social',orgA.id,{platform:'youtube',url:'https://youtube.com/@channel'})
   await assert.rejects(cmd('worker','verify_social',orgA.id,{user_id:ids.worker,platform:'youtube',note:'I own the channel'}),/Independent/)
   await cmd('teamlead','verify_social',orgA.id,{user_id:ids.worker,platform:'youtube',note:'Channel ownership confirmed with owner'})
@@ -145,6 +146,7 @@ test('proof approved during a shift awards attendance when that shift closes',as
   assert.equal((await sql("select sum(points)::int n from public.cmd_ledger where user_id=$1 and category='hazri'",[ids.newcomer]))[0].n,5)
 })
 test('one YouTube channel cannot earn points for multiple members',async()=>{
+  await sql("update public.cmd_members set wing='social' where user_id=$1",[ids.newcomer])
   await cmd('newcomer','social',orgA.id,{platform:'youtube',url:'https://youtube.com/@channel'})
   await cmd('teamlead','verify_social',orgA.id,{user_id:ids.newcomer,platform:'youtube',note:'Ownership evidence recorded for test'})
   await db.exec('set role service_role')
@@ -199,7 +201,7 @@ test('Super Admin promotion, demotion, audit and last-admin protection',async()=
 
 test('profile completion is mandatory for members and cannot set privileges',async()=>{
   await sql('update public.cmd_profiles set completed=false where user_id=$1',[ids.newcomer])
-  await assert.rejects(cmd('newcomer','check_in',orgA.id,{slot:'subah'}),/basic profile/)
+  await assert.rejects(cmd('newcomer','check_in',orgA.id,{slot:'subah'}),/basic profile|Ground Karyakarta/)
   await assert.rejects(cmd('admin','assign_member',orgA.id,{user_id:ids.newcomer,stage:5,wing:'social'}),/basic profile/)
   await assert.rejects(cmd('newcomer','basic_profile',null,{name:'Person',district:'',area:'North'}),/required/)
   await cmd('newcomer','basic_profile',null,{name:'Person',district:'Patna',area:'North',isPlatform:true})
@@ -221,4 +223,33 @@ test('initial privileged phones require verification and are granted only once',
   const aid='00000000-0000-4000-8000-000000000098'
   await sql("insert into auth.users(id,phone,phone_confirmed_at) values($1,'919315937048',now())",[aid])
   const a=await cmd(aid,'account');assert.equal(a.isAdmin,true);assert.equal(a.isPlatform,false)
+})
+
+test('administrators and leaders cannot execute worker operations',async()=>{
+  for(const who of ['admin','peer','teamlead']) {
+    await assert.rejects(cmd(who,'check_in',orgA.id,{slot:'subah'}),/Ground Karyakarta/)
+    await assert.rejects(cmd(who,'social',orgA.id,{platform:'youtube',url:'https://youtube.com/@test'}),/Social Media Karyakarta/)
+    await assert.rejects(cmd(who,'proof',orgA.id,{kind:'task',task_id:taskId,work:'Invalid submission',note:'Should never be submitted'}),/Only Karyakartas/)
+  }
+  await assert.rejects(as('worker',()=>sql("select command_private.execute_assignment('check_in',$1,'{}')",[orgA.id])),/permission denied/)
+})
+
+test('Ground and Social operations and targeted content remain separate',async()=>{
+  await sql("update public.cmd_members set wing='ground' where user_id=$1",[ids.worker])
+  await assert.rejects(cmd('worker','social',orgA.id,{platform:'youtube',url:'https://youtube.com/@test'}),/Social Media Karyakarta/)
+  await assert.rejects(cmd('newcomer','check_in',orgA.id,{slot:'subah'}),/Ground Karyakarta/)
+  const campaign=await cmd('admin','campaign',orgA.id,{title:'Digital campaign only',body:'Posting instructions',target_wing:'social'})
+  const task=await cmd('admin','task',orgA.id,{title:'Digital task only',campaign_id:campaign.id,target_wing:'social'})
+  assert.equal((await as('worker',()=>sql('select id from public.cmd_campaigns where id=$1',[campaign.id]))).length,0)
+  assert.equal((await as('worker',()=>sql('select id from public.cmd_tasks where id=$1',[task.id]))).length,0)
+  assert.equal((await as('newcomer',()=>sql('select id from public.cmd_tasks where id=$1',[task.id]))).length,1)
+  assert.equal((await as('admin',()=>sql('select id from public.cmd_tasks where id=$1',[task.id]))).length,1)
+  await assert.rejects(cmd('worker','proof',orgA.id,{kind:'task',task_id:task.id,work:'Wrong team',note:'Trying another team task'}),/other work team/)
+  await assert.rejects(cmd('admin','task',orgA.id,{title:'Wrong recipient',target_wing:'social',assigned_to:ids.worker}),/selected work team/)
+  await assert.rejects(cmd('admin','task',orgA.id,{title:'Wrong campaign audience',target_wing:'ground',campaign_id:campaign.id}),/match the campaign/)
+  await assert.rejects(cmd('newcomer','proof',orgA.id,{kind:'task',task_id:task.id,hazri_id:shiftId,work:'Bad fields',note:'Digital proof with field shift'}),/Ground reporting fields/)
+  const notices=await sql("select user_id from public.cmd_notifications where title='New assignment' and body='Digital task only'")
+  assert.ok(notices.some(n=>n.user_id===ids.newcomer));assert.ok(!notices.some(n=>n.user_id===ids.worker||n.user_id===ids.admin))
+  await db.exec('set role service_role')
+  try{await assert.rejects(sql('select public.cmd_ingest_youtube($1,$2,$3,12000,300,10)',[orgA.id,ids.worker,'UC_test']),/Social Media Karyakarta analytics only/)}finally{await db.exec('reset role')}
 })

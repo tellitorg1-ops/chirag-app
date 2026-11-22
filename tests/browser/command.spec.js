@@ -60,7 +60,7 @@ for (const [label, stage, options] of [
   await expect(page.getByRole('heading',{name:`${label} dashboard`,exact:true})).toBeVisible()
   await expect(page.getByRole('heading',{name:'Basic profile',exact:true})).toHaveCount(0)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
-  if(label==='Social Media Karyakarta') await expect(page.getByRole('link',{name:'Campaign content',exact:true})).toBeVisible()
+  if(label==='Social Media Karyakarta') await expect(page.locator('.quick-actions').getByRole('link',{name:'Campaign content',exact:true})).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -101,17 +101,58 @@ test('Super Admin assigns a joined member and promotes an account from the dashb
   await page.getByRole('button',{name:'Update account role'}).click()
   await expect.poll(()=>calls.some(c=>c.action==='set_global_role'&&c.payload.user_id===worker&&c.payload.role==='super_admin')).toBeTruthy()
 })
+
+for(const [label,stage,options] of [['Super Admin',null,{superAdmin:true}],['Admin',null,{admin:true}],['Leader',3,{}]])
+test(`${label} workspace offers oversight instead of worker actions`,async({page})=>{
+  await mockWorkspace(page,stage,options)
+  await page.goto('/home')
+  await expect(page.getByRole('link',{name:'Check in',exact:true})).toHaveCount(0)
+  await expect(page.getByText('THIS MONTH · YOUR PROGRESS',{exact:true})).toHaveCount(0)
+  await page.goto('/tasks')
+  await expect(page.getByRole('heading',{name:'Task monitoring',exact:true})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Submit proof',exact:true})).toHaveCount(0)
+  await expect(page.getByText(/Issued by:/)).toBeVisible()
+  await page.goto('/analytics')
+  await expect(page.getByRole('heading',{name:'Social team performance'})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Sync my YouTube'})).toHaveCount(0)
+  await expect(page.getByRole('heading',{name:'Link an account'})).toHaveCount(0)
+  await page.goto('/hazri')
+  await expect(page.getByRole('heading',{name:'This option is not part of your role'})).toBeVisible()
+})
+
+test('Ground worker has field tools and cannot open social tools',async({page})=>{
+  await mockWorkspace(page,5,{wing:'ground'})
+  await page.goto('/home')
+  await expect(page.getByRole('link',{name:'Check in',exact:true})).toBeVisible()
+  await page.goto('/content')
+  await expect(page.getByRole('heading',{name:'Ground instructions',exact:true})).toBeVisible()
+  await page.goto('/analytics')
+  await expect(page.getByRole('heading',{name:'This option is not part of your role'})).toBeVisible()
+})
+
+test('Social worker has digital tools and evidence without ground fields',async({page})=>{
+  await mockWorkspace(page,5,{wing:'social'})
+  await page.goto('/tasks')
+  await page.getByRole('button',{name:'Submit proof',exact:true}).click()
+  await expect(page.getByLabel('Post / campaign evidence')).toBeVisible()
+  await expect(page.getByLabel('Ground pulse / mahaul')).toHaveCount(0)
+  await expect(page.getByLabel('Linked Hazri shift (optional)')).toHaveCount(0)
+  await page.goto('/analytics')
+  await expect(page.getByRole('heading',{name:'Link an account'})).toBeVisible()
+  await page.goto('/diary')
+  await expect(page.getByRole('heading',{name:'This option is not part of your role'})).toBeVisible()
+})
 test('role-aware dashboard is responsive and all active routes render',async({page},info)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message))
   await mockWorkspace(page)
   await page.goto('/home')
   await expect(page.getByRole('heading',{name:'Main Leader dashboard'})).toBeVisible()
-  await expect(page.getByRole('heading',{name:'Sparsh',exact:true})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Sparsh',exact:true})).toHaveCount(0)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
   if(info.project.name==='desktop')await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
   else await expect(page.getByRole('navigation',{name:'Quick navigation'})).toBeVisible()
   await page.screenshot({path:`test-results/${info.project.name}-dashboard.png`,fullPage:true})
-  for(const [path,title] of [['/content','Campaigns & content'],['/hierarchy','Every person. A clear role.'],['/leaderboard','Rankings & recognition'],['/analytics','Social accounts & analytics'],['/reviews','Verification desk'],['/broadcast','Broadcast to your team'],['/profile','My profile'],['/notifications','Notification center']]){
+  for(const [path,title] of [['/content','Directives & assignments'],['/hierarchy','Every person. A clear role.'],['/leaderboard','Rankings & recognition'],['/analytics','Social accounts & analytics'],['/reviews','Verification desk'],['/broadcast','Broadcast to your team'],['/profile','My profile'],['/notifications','Notification center']]){
     await page.goto(path);await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible()
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
   }
@@ -129,7 +170,7 @@ test('ground worker checks in and submits evidence without self-awarding points'
   expect(calls.some(c=>c.action==='proof'&&c.org_id===org&&c.payload.hazri_id)).toBeTruthy()
   expect(calls.some(c=>c.action==='review')).toBeFalsy()
   await page.goto('/reviews')
-  await expect(page.getByRole('heading',{name:'Leadership access required'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'This option is not part of your role'})).toBeVisible()
 })
 test('rank controls request distinct timeframes and show exact next-grade points',async({page})=>{
   const {calls}=await mockWorkspace(page,5);await page.goto('/leaderboard')

@@ -7,6 +7,7 @@ const Organizations = lazy(() => import('./command/Account').then(m => ({default
 const Platform = lazy(() => import('./command/Account').then(m => ({default:m.AdministrationCenter})))
 import { Shell } from './command/Shell'
 const Dashboard = lazy(() => import('./command/Dashboard').then(m => ({ default: m.Dashboard })))
+const Reports = lazy(() => import('./command/TeamReport').then(m => ({default:m.TeamReport})))
 const Hazri = lazy(() => import('./command/Operations').then(m => ({ default: m.Hazri })))
 const Diary = lazy(() => import('./command/Operations').then(m => ({ default: m.Diary })))
 const Tasks = lazy(() => import('./command/Operations').then(m => ({ default: m.Tasks })))
@@ -25,7 +26,7 @@ export default function App() {
     <Route path="/" element={<Entry />} /><Route path="/login" element={<SignIn />} />
     <Route path="/organizations" element={<Organizations />} /><Route path="/platform" element={<Platform />} />
     <Route element={<WorkspaceProvider><Shell /></WorkspaceProvider>}>
-      <Route path="/home" element={<Dashboard />} /><Route path="/hazri" element={<Hazri />} />
+      <Route path="/home" element={<Dashboard />} /><Route path="/reports" element={<Reports />} /><Route path="/hazri" element={<Hazri />} />
       <Route path="/diary" element={<Diary />} /><Route path="/tasks" element={<Tasks />} />
       <Route path="/content" element={<Content />} /><Route path="/reviews" element={<Reviews />} />
       <Route path="/hierarchy" element={<Hierarchy />} /><Route path="/leaderboard" element={<Rankings />} />

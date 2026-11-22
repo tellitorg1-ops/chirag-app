@@ -106,3 +106,12 @@ Notifications and outbox entries are committed together. The dispatcher claims b
 - Frontend is available locally with `npm run dev`; public hosting/domain deployment is not configured by this change. Deploy `dist/` to the chosen static host with an SPA fallback to `/index.html`, HTTPS and the production environment's public keys. Redeploy any previously hosted frontend before using the migrated backend; the old unscoped client is intentionally incompatible with the new access model.
 
 No git commit or push was made automatically. Generated test screenshots/results, temporary MCP request files, dependency cache and secrets are excluded from Git.
+
+## Role-specific operations
+
+- Super Admin/Admin and leadership use task monitoring, directives, verification, ground reports, social team reports, team performance and broadcasts. They have no personal attendance, diary, proof submission, social linking/sync or personal ranking widgets.
+- Ground Karyakartas use field instructions, Hazri, diary, work proofs and their performance. Social account tools are blocked.
+- Social Media Karyakartas use campaign content, digital task evidence and social accounts/analytics. Hazri, diary and ground-pulse fields are blocked.
+- Common options include assigned work, notifications, profile and performance. Direct URLs follow the same capability policy as desktop/mobile navigation.
+- Campaigns and tasks support All / Ground / Social audiences. Database RLS filters targeted content; RPCs reject wrong-role actions and cross-team proof submissions. Assignment notices go only to the intended eligible work team.
+- Task monitoring identifies the issuer, recipient/audience, deadline and submitted/pending/verified counts. Super Admin can issue directives in any active party; other leaders stay within their authorized scope.
