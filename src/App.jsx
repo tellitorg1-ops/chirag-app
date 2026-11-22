@@ -9,7 +9,7 @@ import { Shell } from './command/Shell'
 const Dashboard = lazy(() => import('./command/Dashboard').then(m => ({ default: m.Dashboard })))
 const Reports = lazy(() => import('./command/TeamReport').then(m => ({default:m.TeamReport})))
 const Hazri = lazy(() => import('./command/Operations').then(m => ({ default: m.Hazri })))
-const Diary = lazy(() => import('./command/Operations').then(m => ({ default: m.Diary })))
+const WorkSheet = lazy(() => import('./command/WorkSheet').then(m => ({ default: m.WorkSheet })))
 const Tasks = lazy(() => import('./command/Operations').then(m => ({ default: m.Tasks })))
 const Reviews = lazy(() => import('./command/Operations').then(m => ({ default: m.Reviews })))
 const Content = lazy(() => import('./pages/Content'))
@@ -27,7 +27,7 @@ export default function App() {
     <Route path="/organizations" element={<Organizations />} /><Route path="/platform" element={<Platform />} />
     <Route element={<WorkspaceProvider><Shell /></WorkspaceProvider>}>
       <Route path="/home" element={<Dashboard />} /><Route path="/reports" element={<Reports />} /><Route path="/hazri" element={<Hazri />} />
-      <Route path="/diary" element={<Diary />} /><Route path="/tasks" element={<Tasks />} />
+      <Route path="/diary" element={<Navigate to="/work-sheet" replace />} /><Route path="/work-sheet" element={<WorkSheet />} /><Route path="/tasks" element={<Tasks />} />
       <Route path="/content" element={<Content />} /><Route path="/reviews" element={<Reviews />} />
       <Route path="/hierarchy" element={<Hierarchy />} /><Route path="/leaderboard" element={<Rankings />} />
       <Route path="/analytics" element={<Social />} /><Route path="/notifications" element={<Inbox />} />

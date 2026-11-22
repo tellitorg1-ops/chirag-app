@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { loadEnv } from 'vite'
+import { readFile } from 'node:fs/promises'
 const env=loadEnv('test',process.cwd(),'VITE_')
 const project=new URL(env.VITE_SUPABASE_URL).hostname.split('.')[0]
 const org='10000000-0000-4000-8000-000000000001'
@@ -18,6 +19,7 @@ async function mockWorkspace(page,stage=1,options={}){
     if(url.pathname.includes('/auth/v1/'))return route.fulfill({status:200,headers,body:JSON.stringify({id:user,phone:'919999999999',aud:'authenticated',role:'authenticated'})})
     if(url.pathname.endsWith('/rpc/cmd_execute')){
       const body=request.postDataJSON();calls.push(body)
+      if(body.action==='proof' && options.failWork===body.payload.work) return route.fulfill({status:400,headers,body:JSON.stringify({message:'This row could not be saved'})})
       let result={ok:true,id:crypto.randomUUID()}
       if(body.action==='account')result={isPlatform:!!options.superAdmin,isAdmin:!!options.admin||!!options.superAdmin,profile:{name:'Test Leader',district:'Patna',area:'North',completed:options.completed!==false}}
       if(body.action==='directory')result=options.directory||[]
@@ -26,6 +28,7 @@ async function mockWorkspace(page,stage=1,options={}){
       if(body.action==='check_in')database.cmd_hazri.push({id:result.id,org_id:org,user_id:user,slot:body.payload.slot,checked_in:new Date().toISOString(),checked_out:null})
       if(body.action==='check_out')database.cmd_hazri.forEach(s=>s.checked_out=new Date().toISOString())
       if(body.action==='proof')database.cmd_proofs.push({...body.payload,id:result.id,org_id:org,user_id:user,status:'pending',submitted_at:new Date().toISOString()})
+      if(body.action==='review')database.cmd_proofs.forEach(p=>{if(p.id===body.payload.id){p.status=body.payload.status;p.review_note=body.payload.note}})
       return route.fulfill({status:200,headers,body:JSON.stringify(result)})
     }
     const table=url.pathname.split('/').pop()
@@ -163,10 +166,10 @@ test('ground worker checks in and submits evidence without self-awarding points'
   await page.goto('/hazri');await page.getByRole('button',{name:'Check in',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Your shift is active.'})).toBeVisible()
   await page.goto('/diary')
-  await page.getByLabel('What work did you do?').fill('Visited the assigned route and recorded observations.')
-  await page.getByLabel('Field note / evidence').fill('Met the field coordinator at the assigned location and completed the report.')
-  await page.getByRole('button',{name:'Submit for verification'}).click()
-  await expect(page.getByText('Proof submitted for verification.',{exact:false})).toBeVisible()
+  await page.getByLabel('Work completed row 1').fill('Visited the assigned route and recorded observations.')
+  await page.getByLabel('Evidence note row 1').fill('Met the field coordinator at the assigned location and completed the report.')
+  await page.getByRole('button',{name:'Save work rows'}).click()
+  await expect(page.getByText('1 work row saved for review.',{exact:true})).toBeVisible()
   expect(calls.some(c=>c.action==='proof'&&c.org_id===org&&c.payload.hazri_id)).toBeTruthy()
   expect(calls.some(c=>c.action==='review')).toBeFalsy()
   await page.goto('/reviews')
@@ -178,15 +181,59 @@ test('rank controls request distinct timeframes and show exact next-grade points
   for(const label of ['Daily','Weekly','Monthly','4-Month'])await page.getByRole('button',{name:label,exact:true}).click()
   await expect.poll(()=>new Set(calls.filter(c=>c.action==='rankings').map(c=>c.payload.period)).size).toBe(4)
 })
+
+test('work sheet pastes multiple rows, keeps drafts on refresh and exports saved rows',async({page})=>{
+  const {calls,database}=await mockWorkspace(page,5)
+  database.cmd_hazri.push({id:'50000000-0000-4000-8000-000000000009',user_id:user,org_id:org,slot:'subah',checked_in:new Date().toISOString(),checked_out:null})
+  await page.goto('/work-sheet')
+  await page.getByText('Paste rows from Excel',{exact:true}).click()
+  await page.getByLabel('Paste spreadsheet rows').fill('Visited ward one\tMet residents and recorded requests\t\tRoad issue\nSurveyed market\tRecorded local shop feedback\t\t')
+  await page.getByRole('button',{name:'Add pasted rows'}).click()
+  await page.reload()
+  await expect(page.getByLabel('Work completed row 2')).toHaveValue('Surveyed market')
+  await page.getByRole('button',{name:'Save work rows'}).click()
+  await expect(page.getByText('2 work rows saved for review.',{exact:true})).toBeVisible()
+  expect(calls.filter(c=>c.action==='proof')).toHaveLength(2)
+  await expect(page.getByRole('region',{name:'My ground work records'}).getByRole('cell',{name:'Surveyed market',exact:true})).toBeVisible()
+  const downloadPromise=page.waitForEvent('download')
+  await page.getByRole('button',{name:'Download CSV for Excel'}).click()
+  const download=await downloadPromise
+  const csv=await readFile(await download.path(),'utf8')
+  expect(csv).toContain('Visited ward one');expect(csv).toContain('Surveyed market')
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
+})
+
+test('work sheet retains failed rows and does not resubmit successful rows',async({page})=>{
+  const {database,calls}=await mockWorkspace(page,5,{failWork:'Second field visit'})
+  database.cmd_hazri.push({id:'50000000-0000-4000-8000-000000000009',user_id:user,org_id:org,slot:'subah',checked_in:new Date().toISOString(),checked_out:null})
+  await page.goto('/work-sheet')
+  await page.getByLabel('Work completed row 1').fill('First field visit')
+  await page.getByLabel('Evidence note row 1').fill('Recorded verified location details')
+  await page.getByRole('button',{name:'Add row',exact:true}).click()
+  await page.getByLabel('Work completed row 2').fill('Second field visit')
+  await page.getByRole('button',{name:'Save work rows'}).click()
+  await expect(page.getByText('Check the highlighted rows. Nothing has been submitted.')).toBeVisible()
+  expect(calls.filter(c=>c.action==='proof')).toHaveLength(0)
+  await page.getByLabel('Evidence note row 2').fill('Recorded separate location details')
+  await page.getByRole('button',{name:'Save work rows'}).click()
+  await expect(page.getByText('1 work row saved for review.',{exact:true})).toBeVisible()
+  await expect(page.getByLabel('Work completed row 1')).toHaveValue('Second field visit')
+  await expect(page.getByText('This row could not be saved',{exact:true})).toBeVisible()
+  expect(calls.filter(c=>c.action==='proof'&&c.payload.work==='First field visit')).toHaveLength(1)
+})
 test('leadership sees linked shift timings and ground pulse in team reporting',async({page})=>{
-  const {database}=await mockWorkspace(page)
+  const {database,calls}=await mockWorkspace(page)
   const shift='50000000-0000-4000-8000-000000000001'
   database.cmd_hazri.push({id:shift,org_id:org,user_id:worker,slot:'subah',checked_in:new Date().toISOString(),checked_out:null})
   database.cmd_proofs.push({id:'60000000-0000-4000-8000-000000000001',org_id:org,user_id:worker,hazri_id:shift,kind:'diary',status:'pending',mood:'concern',work:'Recorded field situation',pulse:'Access road needs attention',submitted_at:new Date().toISOString()})
   await page.goto('/hierarchy')
   await expect(page.getByRole('heading',{name:'Team attendance & daily reporting'})).toBeVisible()
   await expect(page.getByRole('cell',{name:'Subah · Morning'})).toBeVisible()
-  await page.locator('summary').filter({hasText:'Field Member'}).click()
+  await page.getByRole('button',{name:'Review row',exact:true}).click()
   await expect(page.getByText('Ground pulse: Access road needs attention')).toBeVisible()
+  await page.getByLabel('Review note').fill('Location and work evidence checked')
+  await page.getByRole('button',{name:'Verify & award'}).click()
+  await expect.poll(()=>calls.some(c=>c.action==='review'&&c.payload.status==='verified')).toBeTruthy()
+  await expect(page.getByRole('region',{name:'Team ground work records'}).getByText('verified',{exact:true})).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
 })

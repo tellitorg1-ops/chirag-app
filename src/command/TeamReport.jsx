@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { WorkSheetTable } from './WorkSheet'
 import { useRows } from './context'
 import { Card, Field, Badge, QueryState, Empty } from './ui'
 import { dateTime, indiaDate, SLOTS } from './domain'
@@ -11,7 +12,7 @@ export function TeamReport() {
   const [district, setDistrict] = useState('')
   const memberMap = new Map(members.data?.map(m => [m.user_id, m]))
   const visible = shifts.data?.filter(s => (!date || indiaDate(new Date(s.checked_in)) === date) && (!district || memberMap.get(s.user_id)?.district === district)) || []
-  return <Card title="Team attendance & daily reporting">
+  return <><WorkSheetTable records={proofs.data?.filter(p=>p.kind==='diary')} members={members.data} shifts={shifts.data} review/><Card title="Team attendance & daily reporting">
     <p className="muted">Shift timings, verified work and local situation roll up through your reporting chain. Only your authorized scope is shown.</p>
     <div className="form-grid">
       <Field label="Workday (IST)"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
@@ -25,7 +26,6 @@ export function TeamReport() {
         })}
       </tbody></table></div>
       {!visible.length && <Empty title="No shifts for this selection">Check another workday or district.</Empty>}
-      {visible.flatMap(s => (proofs.data?.filter(p => p.hazri_id === s.id) || []).map(p => <details key={p.id} className="audit-row"><summary><strong>{memberMap.get(p.user_id)?.name || 'Member'} · {p.kind}</strong><Badge tone={p.mood === 'urgent' ? 'rejected' : p.mood === 'concern' ? 'pending' : p.status}>{p.mood} · {p.status}</Badge></summary><p>{p.work}</p>{p.pulse && <p>Ground pulse: {p.pulse}</p>}<small>{dateTime(p.submitted_at)}</small></details>))}
     </QueryState>
-  </Card>
+  </Card></>
 }

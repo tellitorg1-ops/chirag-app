@@ -6,7 +6,7 @@ export function workspaceCapabilities({ isAdmin = false, isLeader = false, membe
 }
 export function allowedWorkspacePath(path, access) {
   if (['/home','/tasks','/content','/leaderboard','/notifications','/profile'].includes(path)) return true
-  if (['/hazri','/diary'].includes(path)) return access.ground
+  if (['/hazri','/diary','/work-sheet'].includes(path)) return access.ground
   if (path === '/analytics') return access.social || access.supervise
   if (['/reviews','/hierarchy','/broadcast','/reports'].includes(path)) return access.supervise
   return false

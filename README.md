@@ -26,7 +26,7 @@ Browser tests use Edge, mock Supabase responses and never send OTPs, submit live
 | `/platform` | Separate Admin / Super Admin dashboards: parties, pending members, assignments, global roles and audit |
 | `/home` | Role-specific command dashboard and personal progress |
 | `/hazri` | Morning, daytime, evening or active shift; server-recorded check-in/out |
-| `/diary` | Work, proof, linked shift, timestamps and ground pulse |
+| `/work-sheet` | Spreadsheet-style ground work rows, proof, review status and CSV export (`/diary` redirects here) |
 | `/tasks` | Assignments, evidence submission, feedback and task lifecycle |
 | `/content` | Campaign directives, content assets and linked execution tasks |
 | `/reviews` | Independent leadership verification and point awards |
@@ -115,3 +115,9 @@ No git commit or push was made automatically. Generated test screenshots/results
 - Common options include assigned work, notifications, profile and performance. Direct URLs follow the same capability policy as desktop/mobile navigation.
 - Campaigns and tasks support All / Ground / Social audiences. Database RLS filters targeted content; RPCs reject wrong-role actions and cross-team proof submissions. Assignment notices go only to the intended eligible work team.
 - Task monitoring identifies the issuer, recipient/audience, deadline and submitted/pending/verified counts. Super Admin can issue directives in any active party; other leaders stay within their authorized scope.
+
+## Ground Work Sheet
+
+Ground workers log field work as spreadsheet rows instead of a diary form. The sheet supports multiple draft rows, four-column TSV paste from Excel, per-row evidence/photo/link and ground situation, and saving up to 50 rows per batch against a selected Hazri shift. Text drafts remain in the current browser tab, isolated by user and organization; files must be selected again after a refresh. Only saved rows are shared. Validation happens before submission; successful rows leave the draft grid and failed rows retain their content and errors.
+
+Saved records support date/status/search filters and formula-safe CSV export. Reporting leaders and administrators see the same records in Team work sheets and can open each row to review its proof. Existing RLS, independent verification and daily point caps remain enforced. Historical records are preserved under the existing database proof type.

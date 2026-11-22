@@ -26,7 +26,7 @@ export function statusPrompts({ proofs = [], shifts = [], points = 0 }) {
   const prompts = []
   const streak = verifiedStreak(proofs)
   if (streak) prompts.push(`${streak}-day verified work streak. Keep recording evidence for each workday.`)
-  if (active) prompts.push('Your shift is active. Add a diary entry and check out when your work is complete.')
+  if (active) prompts.push('Your shift is active. Add a work-sheet row and check out when your work is complete.')
   if (pending) prompts.push(`${pending} proof${pending === 1 ? '' : 's'} awaiting verification. Points appear after approval.`)
   if (rejected) prompts.push(`${rejected} submission${rejected === 1 ? '' : 's'} need attention. Read reviewer feedback before resubmitting.`)
   prompts.push(grade.next ? `${grade.remaining.toLocaleString('en-IN')} verified points to reach ${grade.next} in this cycle.` : 'Tejas achieved in this cycle. Your verified points continue counting toward rewards.')
